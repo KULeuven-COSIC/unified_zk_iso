@@ -1,0 +1,15 @@
+[package]
+name = "zkisoprover"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+proofs = {path = "proofs"}
+feanor-math = {version = "=3.5.13", features = ["generic_tests", "unstable-enable", "mpir"] }
+# feanor-math = {version = "=3.5.13", features = ["generic_tests", "unstable-enable"] }
+itertools = "0.14.0"
+rand = "0.9.2"
+
+[profile.release]
+lto = "fat"
+
