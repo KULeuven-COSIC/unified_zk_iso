@@ -28,7 +28,7 @@ impl<'a, F, const AsFp2: bool> IsoProverBaseFoldCGL<'a, F, AsFp2>
     pub fn new(field: &'a F, v: &[El<F>]) -> Self
     {
         let ((z, r1cs), ver_rep) = if AsFp2 {
-            (construct_r1cs_Fp::<F, 2>(field, v), 445) // TODO
+            (construct_r1cs_Fp::<F, 2, false>(field, v), 445) // TODO
         } else {
             (construct_r1cs_Fp2_dim2::<F>(field, v), 470) // from basefold code 2^14
         };
@@ -46,30 +46,30 @@ impl<'a, F, const AsFp2: bool> IsoProverBaseFoldCGL<'a, F, AsFp2>
 }
 
 
-pub struct IsoProverBaseFold<'a, F, const DIM: usize, const AsFp2: bool>
+pub struct IsoProverBaseFold<'a, F, const DIM: usize, const AsFp2: bool, const PP: bool>
     where F: RingStore + Clone, F::Type: Field + FiniteRing,
 {
     spartanpiop: SpartanPIOPDefault<'a, F>
 }
 
-impl<'a, F, const DIM: usize, const AsFp2: bool> IsoProverBaseFold<'a, F, DIM, AsFp2>
+impl<'a, F, const DIM: usize, const AsFp2: bool, const PP: bool> IsoProverBaseFold<'a, F, DIM, AsFp2, PP>
     where F: RingStore + Clone, F::Type: Field + FiniteRing
 {
     pub fn new(field: &'a F, v: &[El<F>]) -> Self
     {
         let ((z, r1cs), ver_rep) = if DIM == 4 {
-            (construct_r1cs_Fp::<F, DIM>(field, v), 445) // from basefold code 2^13
+            (construct_r1cs_Fp::<F, DIM, PP>(field, v), 470) // from basefold code 2^14
         } else if DIM == 2 {
             if AsFp2 {
-                (construct_r1cs_Fp::<F, DIM>(field, v), 445) // TODO
+                (construct_r1cs_Fp::<F, DIM, PP>(field, v), 381) // from basefold code 2^10
             } else {
-                (construct_r1cs_Fp2_dim2::<F>(field, v), 470) // from basefold code 2^14
+                (construct_r1cs_Fp2_dim2::<F>(field, v), 422) // from basefold code 2^12
             }
         } else if DIM == 1 {
             if AsFp2 {
-                (construct_r1cs_Fp::<F, DIM>(field, v), 445) // TODO
+                (construct_r1cs_Fp::<F, DIM, PP>(field, v), 381) // from basefold code 2^10
             } else {
-                (construct_r1cs_Fp2_dim1::<F>(field, v), 422) // from basefold code 2^12
+                (construct_r1cs_Fp2_dim1::<F>(field, v), 401) // from basefold code 2^11
             }
         } else {
             panic!("Invalid dimension")
@@ -101,7 +101,7 @@ mod tests {
         // let (_ring, field, trans) = crate::parseFp_cgl();
         // let zkiso = IsoProverBaseFoldCGL::<_, false>::new(&field, &trans);
 
-        // println!("proof size: {} KiB", zkiso.spartanpiop.proofsize() >> (3 + 10));
+        println!("proof size: {} KiB", zkiso.spartanpiop.proofsize() >> (3 + 10));
 
         use std::time::SystemTime;
         let start = SystemTime::now();
@@ -114,12 +114,13 @@ mod tests {
     fn test_iso_pcs() {
 
         const DIM: usize = 4;
+        const PP: bool = true;
         
         // let (_ring, field, trans) = crate::parseFp2::<DIM>();
-        // let zkiso = IsoProverBaseFold::<_, DIM, true>::new(&field, &trans);
+        // let zkiso = IsoProverBaseFold::<_, DIM, true, PP>::new(&field, &trans);
 
-        let (_ring, field, trans) = crate::parseFp::<DIM>();
-        let zkiso = IsoProverBaseFold::<_, DIM, false>::new(&field, &trans);
+        let (_ring, field, trans) = crate::parseFp::<DIM, PP>();
+        let zkiso = IsoProverBaseFold::<_, DIM, false, PP>::new(&field, &trans);
 
         println!("proof size: {} KiB", zkiso.spartanpiop.proofsize() >> (3 + 10));
 

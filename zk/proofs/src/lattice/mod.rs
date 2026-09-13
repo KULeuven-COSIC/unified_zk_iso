@@ -37,7 +37,8 @@ pub fn gen_vector_infbnd<R, RNG>(ring: &R, mut rng: RNG, bnd: &El<BigIntRing>, s
     where R: RingStore<Type: CanHomFrom<BigIntRingBase>>, RNG: Rng + CryptoRng
 {
     let Rbnd = Zn::new(ZZbig, ZZbig.clone_el(bnd));
-    let hom = ring.can_hom(&ZZbig).unwrap(); gen_vector::<El<R>>(|| gen_infbnd(&mut rng, &Rbnd, &hom), size)
+    let hom = ring.can_hom(&ZZbig).unwrap();
+    gen_vector::<El<R>>(|| gen_infbnd(&mut rng, &Rbnd, &hom), size)
 }
 
 

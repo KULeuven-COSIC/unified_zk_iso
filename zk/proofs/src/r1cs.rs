@@ -1,4 +1,4 @@
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 use rand::Rng;
 
 use feanor_math::field::{Field, FieldStore};
@@ -25,6 +25,20 @@ impl<'a, R: RingStore> R1CSMatrix<'a, R>
              mm
         }
     }
+
+    pub fn matrix(&self) -> &SparseMatrixMul<'a, R> {
+        &self.mm
+    }
+
+    pub fn mul(&self, rhs: &[El<R>]) -> Vec<El<R>> {
+        self.mm.mul(rhs)
+    }
+
+    fn mulit(&self, rhs: &[El<R>]) -> impl Iterator<Item = El<R>> {
+        self.mm.mulit(rhs)
+    }
+
+    pub fn rowlogsize(&self) -> usize { self.rowlogsize }
 }
 
 impl<'a, R: RingStore<Type: Field>> R1CSMatrix<'a, R>
@@ -67,12 +81,6 @@ impl<'a, R: RingStore<Type: Field>> R1CSMatrix<'a, R>
         ));
         res
     }
-
-    pub fn mul(&self, rhs: &[El<R>]) -> Vec<El<R>> {
-        self.mm.mul(rhs)
-    }
-
-    pub fn rowlogsize(&self) -> usize { self.rowlogsize }
 }
 
 pub struct R1CS<'a, R: RingStore> {
@@ -90,6 +98,22 @@ impl<'a, R: RingStore> R1CS<'a, R>
              B: R1CSMatrix::new(B),
              C: R1CSMatrix::new(C)
         }
+    }
+
+    pub fn satisfies(&self, z: &[El<R>]) -> bool {
+        let ring = self.A.mm.ring();
+        // izip!(self.A.mulit(z), self.B.mulit(z), self.C.mulit(z)).all(|(ai, bi, ci)|
+        //     ring.eq_el(&ring.mul(ai, bi), &ci))
+        izip!(self.A.mulit(z), self.B.mulit(z), self.C.mulit(z)).enumerate()
+        .all(|(i, (ai, bi, ci))| {
+            let res = ring.eq_el(&ring.mul_ref(&ai, &bi), &ci);
+            if !res {
+                println!("R1CS row {i} is not satisfied!");
+                println!("ai: {}, bi: {}, ci: {}",
+                    ring.format(&ai), ring.format(&bi), ring.format(&ci))
+            };
+            res
+        })
     }
 }
 

@@ -51,9 +51,14 @@ class ChainHelper:
                 T, glue_4d, e, 1,
                 splitting=True, strategy=None)
 
+        self.isogeny = Phi
+
         tt2 = time()
         logger.info(f'\t- Chain: {tt2-tt1:.3f}s for {e = }')
         cod = Phi._isogenies[-1]._codomain
+
+        #dom = Phi._isogenies[0]._domain
+        #print(dom)
 
         # Splitting
         P, Q = BPQ
@@ -61,6 +66,11 @@ class ChainHelper:
         # assert ePQ4 == P.weil_pairing(Q, 2**(e+2))**(2**e)
         N = base_change_theta_dim4(M2, ePQ4)
         codom_prod = cod.base_change_struct(N)
+
+        self.N_split = N
+        self.M_split = M2
+        self.e4 = ePQ4
+        self.codomain_product = codom_prod
 
         thetaA, thetaB = find_product_4(codom_prod.null_point())
         a1, b1 = thetaA[0], thetaA[2]
@@ -78,6 +88,106 @@ class ChainHelper:
         self.Eabar = A1
         tt3 = time()
         logger.info(f'\t- Splitting: {tt3-tt2:.3f}s')
+
+    def _normalize_auxiliary(self, P, P_prev, null_point):
+        """
+        Scale P so that the point evaluation formula holds affinely.
+        """
+        H_P = hadamard(P.coords())
+        H_null = hadamard(null_point.coords())
+        HS_P_prev = hadamard([c**2 for c in P_prev.coords()])
+
+        scale = None
+        for h_p, h_null, hs_p_prev in zip(H_P, H_null, HS_P_prev):
+            if h_p*h_null != 0:
+                scale = hs_p_prev/(h_p*h_null)
+                break
+        assert scale is not None
+
+        P = P.scale(scale)
+        H_P = hadamard(P.coords())
+        for h_p, h_null, hs_p_prev in zip(H_P, H_null, HS_P_prev):
+            assert h_p*h_null == hs_p_prev
+
+        return P
+
+    def evaluate_auxiliary(self, P):
+        """
+        Evaluate P and return one theta point for every null point in the
+        transcript.
+        """
+        first_isogenies = self.isogeny._isogenies[0]
+
+        P, Q = first_isogenies.eval_gluing(P, return_domain=True)
+        points = [P]
+
+        null_point = first_isogenies.glue_4d._codomain.null_point()
+        Q = self._normalize_auxiliary(Q, P, null_point)
+        points.append(Q)
+
+        P = Q
+        Q = first_isogenies.second_isogeny(P)
+        null_point = first_isogenies.second_isogeny._codomain.null_point()
+        Q = self._normalize_auxiliary(Q, P, null_point)
+        points.append(Q)
+
+        for phi in self.isogeny._isogenies[1:]:
+            P = Q
+            Q = phi(P)
+            null_point = phi._codomain.null_point()
+            Q = self._normalize_auxiliary(Q, P, null_point)
+            points.append(Q)
+
+        return points
+
+    def write_auxiliary_transcript(self, points, factor=0):
+        """
+        Add the auxiliary theta coordinates to the null-point transcript and
+        prove that the selected embedded isogeny does not map the auxiliary
+        point to zero.
+        """
+        assert factor in (0, 1)
+
+        with open('zk_radical.txt', 'r') as fh:
+            transcript = fh.read().strip().split('\n')
+
+        assert len(transcript) == len(points)
+        for idx, P in enumerate(points):
+            coords = P.coords()
+            transcript[idx] += ';'.join(
+                    f'p{j}={coords[j]}' for j in range(len(coords))) + ';'
+
+        null_point = self.codomain_product.null_point().coords()
+        P = self.codomain_product.base_change_coords(
+                self.N_split, points[-1])
+
+        null_index, null_factor = product_factor_slice(null_point, factor)
+        point_index, point_factor = product_factor_slice(P.coords(), factor)
+
+        Fp = self.isogeny._isogenies[0].Fp
+        null_factor = [Fp(c) for c in null_factor]
+        point_factor = [Fp(c) for c in point_factor]
+        # Two theta points of dimension one are equal precisely when this
+        # projective determinant vanishes.
+        determinant = (point_factor[0]*null_factor[1]
+                - point_factor[1]*null_factor[0])
+        nonzero_witness = 1/determinant
+
+        transcript[-1] += ';'.join(
+                f'z{j}={null_factor[j]}' for j in range(2)) + ';'
+        transcript[-1] += f'nz={nonzero_witness};'
+        transcript[-1] += f'factor={factor};'
+        transcript[-1] += f'zidx={null_index};qidx={point_index};'
+        # Public product null-point and splitting data.
+        transcript[-1] += ';'.join(
+                f's{j}={null_point[j]}' for j in range(16)) + ';'
+        M_split = self.M_split.list()
+        transcript[-1] += ';'.join(
+                f'm{j}={M_split[j]}' for j in range(64)) + ';'
+        transcript[-1] += f'e4={self.e4};'
+
+        with open('zk_radical.txt', 'w') as fh:
+            fh.write('\n'.join(transcript) + '\n')
 
 
 class GlueHelper:
@@ -186,7 +296,7 @@ class GlueHelper:
     def codomain(self):
         return self._codomain
 
-    def eval_gluing(self, P):
+    def eval_gluing(self, P, return_domain=False):
         """
         We need to pass, together with P, translates P+T by points of 4-torsion
         T above the kernel. The index is turn into a number, so (1, 0, 1, 0) is
@@ -234,7 +344,10 @@ class GlueHelper:
             for _RS in P_trans
         ]
 
-        return self.glue_4d.special_image(P, P_trans, self.L_ind)
+        Q = self.glue_4d.special_image(P, P_trans, self.L_ind)
+        if return_domain:
+            return P, Q
+        return Q
 
     def __call__(self,P):
         Q = self.second_isogeny(self.eval_gluing(P))
@@ -281,6 +394,20 @@ def mont_to_theta(P, T):
 
     thetaP = ThetaPointDim1(T, (t1, t2))
     return thetaP
+
+def product_factor_slice(P, factor):
+    """
+    Extract a projective factor from a product theta point, together with a
+    public non-zero slice index.
+    """
+    mask = 2**factor
+    for idx in range(16):
+        if idx & mask:
+            continue
+        point = (P[idx], P[idx + mask])
+        if point != (0, 0):
+            return idx, point
+    raise ValueError("Invalid product theta point")
 
 def find_product_4(theta_null):
     """

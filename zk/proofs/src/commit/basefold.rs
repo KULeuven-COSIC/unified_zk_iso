@@ -110,16 +110,17 @@ impl<'a, F, SC> BaseFoldPCS<'a, RSFoldableCode<'a, F>, SC>
     pub fn new(field: &'a F, varcount: usize, k0: usize, c: usize, ver_rep: Option<usize>) -> Self
     {
         assert!(k0.is_power_of_two());
+        assert!((1 << varcount) >= k0);
 
         let d = if ver_rep.is_some() {
             Some(varcount - (k0.ilog2() as usize))
         } else { None };
         let code = RSFoldableCode::new(field, k0, c, d);
         
-        // NOTE: fake polyring to efficiently test large instances
-        let polyring = MultivariatePolyRingImpl::new_with(field.clone(),
+        let polyring = MultivariatePolyRingImpl::new_with_mult_table(field.clone(),
             varcount, 0, (0, 0), Global);
-        // let polyring = MultivariatePolyRingImpl::new_with(field.clone(),
+        // NOTE: fake polyring to efficiently test large instances
+        // let polyring = MultivariatePolyRingImpl::new_with_mult_table(field.clone(),
         //     varcount, 2*varcount as u16, (0, 0), Global);
 
         let fs = RefCell::new(FiatShamirSim::<FSRng>::new());
@@ -168,6 +169,7 @@ impl<'a, 'b, C, SC> MultilinearPCS<'b> for BaseFoldPCS<'a, C, SC>
         let vc = self.polyring().indeterminate_count();
         assert!(z.len() == vc);
         let f = self.field();
+
         let otherpoints = [2];
 
         let fsclone = self.fs.borrow().clone();
@@ -176,12 +178,7 @@ impl<'a, 'b, C, SC> MultilinearPCS<'b> for BaseFoldPCS<'a, C, SC>
         let eq = MultilinearBasis::new(f, &z).polynomial(&self.polyring);
         let mut wpoly = self.polyring.clone_el(poly);
         let mut scpoly = self.polyring.mul_ref_fst(poly, eq);
-        //assert_el_eq!(self.coeffring(), sum_over_hypercube(&self.polyring, &scpoly, vc, &[]), y);
         let mut hunivar = sumcheck_sum(&self.polyring, &scpoly, vc - 1, otherpoints);
-        /*assert_el_eq!(self.coeffring(), &self.coeffring().add(
-            unipolyring.evaluate(&hunivar, &self.coeffring().zero(), self.coeffring().identity()),
-            unipolyring.evaluate(&hunivar, &self.coeffring().one(), self.coeffring().identity())
-        ), &y);*/
         polys.push(hunivar);
 
         let mut proofcodes: Vec<Vec<El<BSCF<SC>>>> = Vec::with_capacity(d);
@@ -203,19 +200,10 @@ impl<'a, 'b, C, SC> MultilinearPCS<'b> for BaseFoldPCS<'a, C, SC>
                 }).collect()
             );
             topcode = &proofcodes[d - 1 - dind];
-            /*let wpolycode = self.code.encode(&get_hypercube_coeffs(&self.polyring,
-                    &wpoly, curfreevc).iter().collect_vec());
-            assert!((0..self.code.n(dind)).all(|i|
-                self.coeffring().eq_el(&proofcodes[d-1-dind][i], &wpolycode[i])));*/
 
             if dind != 0 {
                 scpoly = self.polyring().specialize(&scpoly, curfreevc, &challconst);
-                //let tmpsum = unipolyring.evaluate(&polys[d - 1 - dind], &chall, self.coeffring().identity());
                 hunivar = sumcheck_sum(&self.polyring, &scpoly, curfreevc - 1, otherpoints);
-                /*assert_el_eq!(self.coeffring(), &self.coeffring().add(
-                    unipolyring.evaluate(&hunivar, &self.coeffring().zero(), self.coeffring().identity()),
-                    unipolyring.evaluate(&hunivar, &self.coeffring().one(), self.coeffring().identity())
-                ), &tmpsum);*/
                 polys.push(hunivar);
             }
         }
@@ -652,7 +640,7 @@ mod tests {
     use feanor_math::rings::finite::FiniteRingStore;
     use feanor_math::rings::field::AsField;
 
-    use crate::util::gen_vector;
+    use crate::util::gen_random;
     use crate::multilinear::{from_hypercube_coeffs, sum_over_hypercube,
         evaluate_at_fromcoeff, coeffs_to_evals_inplace};
 
@@ -661,9 +649,11 @@ mod tests {
 
     #[test]
     #[ignore]
+    // NOTE: only works when instantiating larger fake polyring
     fn test_basefolding() {
 
         let field = Zn::new(65537).as_field().ok().unwrap();
+        let mut rng = rand::rng();
 
         let N = 7;
         let k0 = 1;
@@ -671,8 +661,7 @@ mod tests {
         let bf = BaseFoldPCS::<_, BaseFoldSumcheckBasic<_, false>>::new(&field, N, k0, c, VREP);
         let vc = bf.polyring().indeterminate_count();
 
-        let randomcoeffs = gen_vector::<El<FieldImpl>>(||
-            field.random_element(rand::random::<u64>), 1 << vc);
+        let randomcoeffs = gen_random(&field, &mut rng, 1 << vc);
         let poly = from_hypercube_coeffs(bf.polyring(), &randomcoeffs);
 
         let topcode = bf.commit(&randomcoeffs).code_el;
@@ -700,20 +689,21 @@ mod tests {
 
     #[test]
     #[ignore]
+    // NOTE: only works when instantiating larger fake polyring
     fn test_basefoldpcs_slow() {
         
         let field = Zn::new(65537).as_field().ok().unwrap();
+        let mut rng = rand::rng();
 
         let N = 5;
         let k0 = 2;
         let c = 2;
         let bf = BaseFoldPCS::<_, BaseFoldSumcheckBasic<_, false>>::new(&field, N, k0, c, VREP);
 
-        let randomcoeffs = gen_vector::<El<FieldImpl>>(||
-            field.random_element(rand::random::<u64>), 1 << N);
+        let randomcoeffs = gen_random(&field, &mut rng, 1 << N);
         let poly = from_hypercube_coeffs(bf.polyring(), &randomcoeffs);
 
-        let zinner = gen_vector::<El<FieldImpl>>(|| field.random_element(rand::random::<u64>), N);
+        let zinner = gen_random(&field, &mut rng, N);
         let z = (0..N).map_fn(|i| field.clone_el(&zinner[i]));
         let y = bf.polyring().evaluate(&poly, &z, bf.coeffring().identity());
 
@@ -729,16 +719,16 @@ mod tests {
     fn test_basefoldsumchecksum() {
 
         let field = Zn::new(65537).as_field().ok().unwrap();
+        let mut rng = rand::rng();
 
         let N = 5;
         let polyring = MultivariatePolyRingImpl::new(field.clone(), N);
 
-        let randomcoeffs = gen_vector::<El<FieldImpl>>(||
-            field.random_element(rand::random::<u64>), 1 << N);
+        let randomcoeffs = gen_random(&field, &mut rng, 1 << N);
         let mut poly = from_hypercube_coeffs(&polyring, &randomcoeffs);
         
         // to make poly have variables of deg 2
-        let zinner = gen_vector::<El<FieldImpl>>(|| field.random_element(rand::random::<u64>), N);
+        let zinner = gen_random(&field, &mut rng, N);
         let z = (0..N).map_fn(|i| field.clone_el(&zinner[i]));
         let zvec: Vec<_> = z.clone().into_iter().collect();
         let eq = MultilinearBasis::new(&field, &zvec).polynomial(&polyring);
@@ -784,6 +774,7 @@ mod tests {
         // tracing_subscriber::registry().with(chrome_layer).init();
 
         let field = Zn::new(65537).as_field().ok().unwrap();
+        let mut rng = rand::rng();
         
         let N = 16;
         let k0 = 2;
@@ -795,9 +786,8 @@ mod tests {
             BaseFoldSumcheckDoubleEfficient<_> // wow, this is almost twice as fast :)
         >::new(&field, N, k0, c, VREP);
 
-        let randomcoeffs = gen_vector::<El<FieldImpl>>(||
-            field.random_element(rand::random::<u64>), 1 << N);
-        let z = gen_vector::<El<FieldImpl>>(|| field.random_element(rand::random::<u64>), N);
+        let randomcoeffs = gen_random(&field, &mut rng, 1 << N);
+        let z = gen_random(&field, &mut rng, N);
         let y = evaluate_at_fromcoeff(&field, N, &z, &randomcoeffs).pop().unwrap();
 
         let com = bf.commit(&randomcoeffs);

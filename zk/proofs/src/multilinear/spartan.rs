@@ -5,7 +5,7 @@ use rand::Rng;
 use feanor_math::integer::{BigIntRing, IntegerRingStore};
 use feanor_math::field::Field;
 use feanor_math::ring::{RingStore, El};
-use feanor_math::rings::finite::{FiniteRing, FiniteRingStore};
+use feanor_math::rings::finite::FiniteRing;
 
 use crate::{
     codes::foldablecodes::RSFoldableCode,
@@ -17,7 +17,7 @@ use crate::{
         },
     },
     r1cs::R1CS,
-    util::{gen_vector, Coeff, CoeffRing},
+    util::{gen_random, Coeff, CoeffRing},
     multilinear::{
         sumcheck::{Sumcheck, SumcheckBase},
         MultilinearBasis, MultilinearBasisEvals,
@@ -56,7 +56,7 @@ impl<'a, F, BSC> SpartanPIOP<'a, BaseFoldPCS<'a, RSFoldableCode<'a, F>, BSC>>
         let pcs = BaseFoldPCS::<'a, RSFoldableCode<'a, F>, BSC>
             ::new(field, vc_cols, k0, c, ver_rep);
 
-        // if none then we do not intend on actually computing the pcs at the end
+        // NOTE: if none then we do not intend on actually computing the pcs at the end
         let (zcoeff, com) = if ver_rep.is_some() {
             // TODO: avoid clone here?
             let mut zcoeff = z.iter().map(|el| field.clone_el(el)).collect_vec();
@@ -102,6 +102,10 @@ impl<'a, PCS: MultilinearPCS<'a>> SpartanPIOP<'a, PCS>
         self.pcs.coeffring()
     }
 
+    pub fn r1cs(&self) -> &R1CS<'a, CoeffRing<PCS::Poly>> {
+        &self.r1cs
+    }
+
     pub fn varcount_rows(&self) -> usize {
         self.vc_rows
     }
@@ -130,10 +134,9 @@ impl<'a, F, BSC> SpartanPIOP<'a, BaseFoldPCS<'a, RSFoldableCode<'a, F>, BSC>>
     pub fn random<RNG: Rng>(field: &'a F, mut rng: RNG,
         vc: usize, vcrows: usize, ver_rep: usize) -> Self
     {
-        let mut z = gen_vector::<El<F>>(||
-            field.random_element(|| rng.next_u64()), 1 << vc);
+        let mut z = gen_random(field, &mut rng, 1 << vc);
         while z.iter().all(|zi| field.is_zero(zi)) {
-            z = gen_vector::<El<F>>(|| field.random_element(|| rng.next_u64()), 1 << vc);
+            z = gen_random(field, &mut rng, 1 << vc);
         }
         let (r1cs, zA, zB, zC) = R1CS::random_from(field, rng, &z, 1 << vcrows);
         SpartanPIOP::new_extra(field, z, r1cs, zA, zB, zC, Some(ver_rep))
@@ -293,6 +296,10 @@ impl<'a, PCS:MultilinearPCS<'a>> SpartanLincheckBase<'a, PCS>
     {
         Self { piop }
     }
+
+    pub fn piop(&self) -> &SpartanPIOP<'a, PCS> {
+        &self.piop
+    }
 }
 
 impl<'a, PCS> SumcheckBase<2> for SpartanLincheckBase<'a, PCS>
@@ -430,7 +437,6 @@ mod tests {
     use super::*;
     use feanor_math::rings::zn::ZnRingStore;
     use feanor_math::rings::zn::zn_64::Zn;
-    use crate::commit::basefold::{BaseFoldSumcheckBasic, BaseFoldSumcheckDoubleEfficient};
 
     const VREP: usize = 100;
 
@@ -443,7 +449,9 @@ mod tests {
         let N = 14;
         
         let spartan: SpartanPIOP::<'_, BaseFoldPCS<'_, RSFoldableCode<_>,
-            BaseFoldSumcheckDoubleEfficient<_>>>
+            crate::commit::basefold::BaseFoldSumcheckDoubleEfficient<_>>>
+            // crate::commit::basefold::BaseFoldSumcheckBasic<_, false>>>
+            // crate::commit::basefold::BaseFoldSumcheckBasic<_, true>>>
                 = SpartanPIOP::random(&field, &mut rng, N, N+1, VREP);
 
         assert!(spartan.execute());

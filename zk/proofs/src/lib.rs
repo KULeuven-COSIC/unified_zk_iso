@@ -2,10 +2,15 @@
 
 #![feature(generic_const_exprs)]
 
+#![feature(vec_into_chunks)]
+
+#![feature(trusted_len)]
+
 #![allow(incomplete_features)]
 
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
+#![allow(non_camel_case_types)]
 
 pub mod util;
 

@@ -90,25 +90,22 @@ impl<'a, Rg: RingStore<Type: LinSolveRing>> LinearCode for RScode<'a, Rg> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use feanor_math::rings::field::AsField;
     use feanor_math::rings::zn::ZnRingStore;
     use feanor_math::rings::zn::zn_64::Zn;
-    use feanor_math::rings::finite::FiniteRingStore;
-    use crate::util::gen_vector;
+    use crate::util::gen_random;
 
     #[test]
     fn test_rscode_basics() {
 
         let field = Zn::new(65537).as_field().ok().unwrap();
-        pub type Field = AsField<Zn>;
+        let mut rng = rand::rng();
 
         let k0 = 5;
         let c = 2;
 
         let rscode = RScode::new(&field, k0, k0*c);
 
-        let input = gen_vector::<El<Field>>(||
-            field.random_element(rand::random::<u64>), k0);
+        let input = gen_random(&field, &mut rng, k0);
        
         let code = rscode.encode(&input);
 

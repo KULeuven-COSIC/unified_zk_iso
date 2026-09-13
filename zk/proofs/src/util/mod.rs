@@ -16,13 +16,11 @@ pub fn gen_vector<EL>(mut f: impl FnMut() -> EL, len: usize) -> Vec<EL> {
     (0..len).map(|_| f()).collect()
 }
 
-// TODO: use this where possible
 pub fn gen_random<R, RNG>(ring: &R, mut rng: RNG, len: usize) -> Vec<El<R>>
     where R: RingStore<Type: FiniteRing>, RNG: Rng
 {
     gen_vector::<El<R>>(|| ring.random_element(|| rng.next_u64()), len)
 }
-
 
 // TODO: check where we can use this instead of calling bits_from_int for all ints
 pub fn bits(bitlen: usize) -> impl Iterator<Item = Vec<usize>>
@@ -136,7 +134,7 @@ mod tests {
     use feanor_math::rings::zn::zn_64::Zn;
 
     #[test]
-    fn test_bits() {
+    fn test_util_bits() {
 
         let N = 7;
         let int = rand::rng().random_range(0..(1 << N));
@@ -150,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fiatshamirsim() {
+    fn test_util_fiatshamirsim() {
 
         let N = 10;
         let field = Zn::new(65537).as_field().ok().unwrap();

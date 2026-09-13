@@ -15,6 +15,9 @@ pub mod sumcheck;
 
 pub mod spartan;
 
+pub mod vMM;
+
+
 // indeterminates are ordered from encoding the lsb to encoding the msb
 pub fn from_hypercube_coeffs<Poly>(polyring: &Poly, coeffs: &[Coeff<Poly>]) -> El<Poly>
     where Poly: MultivariatePolyRingStore<Type: MultivariatePolyRing>
@@ -357,24 +360,21 @@ mod tests {
     use super::*;
     use feanor_math::rings::zn::ZnRingStore;
     use feanor_math::rings::zn::zn_64::Zn;
-    use feanor_math::rings::field::AsField;
     use feanor_math::assert_el_eq;
-    use feanor_math::rings::finite::FiniteRingStore;
     use feanor_math::rings::multivariate::multivariate_impl::MultivariatePolyRingImpl;
 
-    use crate::util::gen_vector;
+    use crate::util::gen_random;
 
     #[test]
     fn test_hypercube_coeffs() {
 
         let field = Zn::new(65537).as_field().ok().unwrap();
-        pub type Field = AsField<Zn>;
+        let mut rng = rand::rng();
 
         let N = 5;
         let polyring = MultivariatePolyRingImpl::new(field.clone(), N);
 
-        let randomcoeffs = gen_vector::<El<Field>>(||
-            field.random_element(rand::random::<u64>), 1 << N);
+        let randomcoeffs = gen_random(&field, &mut rng, 1 << N);
         let poly = from_hypercube_coeffs(&polyring, &randomcoeffs);
 
         let mut coeffs = get_hypercube_coeffs(&polyring, &poly, N);
@@ -397,19 +397,18 @@ mod tests {
     fn test_hypercube_folding() {
 
         let field = Zn::new(65537).as_field().ok().unwrap();
-        pub type Field = AsField<Zn>;
+        let mut rng = rand::rng();
 
         let N = 7;
         let polyring = MultivariatePolyRingImpl::new(field.clone(), N);
 
-        let randomcoeffs = gen_vector::<El<Field>>(||
-            field.random_element(rand::random::<u64>), 1 << N);
+        let randomcoeffs = gen_random(&field, &mut rng, 1 << N);
         let poly = from_hypercube_coeffs(&polyring, &randomcoeffs);
         let evals = (0..(1 << N)).map(|j| polyring.evaluate(&poly,
             (0..N).map_fn(|n| field.int_hom().map(((j >> n) & 1) as i32)),
             field.identity())).collect::<Vec<_>>();
     
-        let rs = gen_vector::<El<Field>>(|| field.random_element(rand::random::<u64>), N);
+        let rs = gen_random(&field, &mut rng, N);
 
         let mut foldedpoly = polyring.clone_el(&poly);
         assert!((0..N).rev().all(|i| {
@@ -439,7 +438,7 @@ mod tests {
     fn test_multilinear_basis() {
 
         let field = Zn::new(65537).as_field().ok().unwrap();
-        pub type Field = AsField<Zn>;
+        let mut rng = rand::rng();
 
         let N = 5;
         let polyring = MultivariatePolyRingImpl::new(field.clone(), N);
@@ -460,7 +459,7 @@ mod tests {
 
         assert!(polyring.appearing_indeterminates(&eq).into_iter().all(|(_, exp)| exp == 1));
 
-        let randpoint = gen_vector::<El<Field>>(|| field.random_element(rand::random::<u64>), N);
+        let randpoint = gen_random(&field, &mut rng, N);
         assert_el_eq!(field,
             polyring.evaluate(&eq, (0..randpoint.len()).map_fn(|i| randpoint[i]), field.identity()),
             mb.evaluate(&randpoint)
@@ -471,12 +470,12 @@ mod tests {
     fn test_multilinear_basis_evals() {
 
         let field = Zn::new(65537).as_field().ok().unwrap();
-        pub type Field = AsField<Zn>;
+        let mut rng = rand::rng();
 
         let N = 5;
         let polyring = MultivariatePolyRingImpl::new(field.clone(), N);
 
-        let z = gen_vector::<El<Field>>(|| field.random_element(rand::random::<u64>), N);
+        let z = gen_random(&field, &mut rng, N);
 
         let mb = MultilinearBasis::new(&field, &z);
         let eq = mb.polynomial(&polyring);

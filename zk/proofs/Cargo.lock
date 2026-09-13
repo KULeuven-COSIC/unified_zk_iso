@@ -22,9 +22,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "bytemuck"
-version = "1.24.0"
+version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fbdf580320f38b612e485521afda1ee26d10cc9884efaaa750d383e13e3c5f4"
+checksum = "c8efb64bd706a16a1bdde310ae86b351e4d21550d98d056f22f8a7f7a2183fec"
 
 [[package]]
 name = "cfg-if"
@@ -40,20 +40,30 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "feanor-math"
-version = "3.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ab5fd8061badf86e08ebf179fb53c1bfe7f936af583e03660bf5848e069ecea"
+version = "3.5.18"
+source = "git+https://github.com/jannikspiessens/feanor-math.git#b47f649c201519a4a4cb404d63e10a28fb4b6b55"
 dependencies = [
  "append-only-vec",
  "atomicbox",
  "bytemuck",
+ "feanor-serde",
  "libc",
  "oorandom",
  "serde",
  "serde_assert",
  "serde_bytes",
+ "smallvec",
  "stability",
  "thread_local",
+]
+
+[[package]]
+name = "feanor-serde"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71fa2c7f5c1d04782a554cc8c74e5936d8316463c9c32c9f6e622b354a845ca3"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -176,6 +186,7 @@ dependencies = [
  "itertools",
  "rand",
  "rand_distr",
+ "rand_seeder",
  "tracing",
  "tracing-chrome",
  "tracing-subscriber",
@@ -198,12 +209,12 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "rand"
-version = "0.9.2"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
+checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
 dependencies = [
  "rand_chacha",
- "rand_core",
+ "rand_core 0.9.3",
 ]
 
 [[package]]
@@ -213,7 +224,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
 dependencies = [
  "ppv-lite86",
- "rand_core",
+ "rand_core 0.9.3",
 ]
 
 [[package]]
@@ -226,6 +237,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_core"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
+
+[[package]]
 name = "rand_distr"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -233,6 +250,15 @@ checksum = "6a8615d50dcf34fa31f7ab52692afec947c4dd0ab803cc87cb3b0b4570ff7463"
 dependencies = [
  "num-traits",
  "rand",
+]
+
+[[package]]
+name = "rand_seeder"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45225a2ea2a8f7b2038a32088f3cc551ff50d764ffea05525f84cbfb5ee06626"
+dependencies = [
+ "rand_core 0.10.1",
 ]
 
 [[package]]

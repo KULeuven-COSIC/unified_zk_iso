@@ -43,4 +43,3 @@ pub trait MultilinearPCS<'a> {
         y: Coeff<Self::Poly>, polycoeff: Option<&'a[Coeff<Self::Poly>]>,
         polyeval: Option<&'a[Coeff<Self::Poly>]>) -> Self::P;
 }
-

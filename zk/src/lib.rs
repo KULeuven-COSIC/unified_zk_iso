@@ -66,13 +66,14 @@ fn get_p<const DIM: usize>() -> El<BigIntRing> {
 type RImpl = Zn<BigIntRing>;
 type FieldImpl = AsField<RImpl>;
 
-pub fn parseFp<const DIM: usize>() -> (RImpl, FieldImpl, Vec<El<FieldImpl>>) {
+pub fn parseFp<const DIM: usize, const PP: bool>() -> (RImpl, FieldImpl, Vec<El<FieldImpl>>) {
 
     let p = get_p::<DIM>();
     let ring = Zn::new(ZZbig, p);
     let field = ring.clone().as_field().ok().unwrap();
 
-    let br = BufReader::new(File::open(format!("../dim{}/zk_radical.txt", DIM)).unwrap());
+    let transfilename = format!("../dim{}/zk_radical.txt", DIM);
+    let br = BufReader::new(File::open(&transfilename).unwrap());
 
     let v = if DIM == 1 {
         let vFp2 = br.lines().next().unwrap().unwrap()
@@ -107,15 +108,71 @@ pub fn parseFp<const DIM: usize>() -> (RImpl, FieldImpl, Vec<El<FieldImpl>>) {
         }).map(|s| field.coerce(&ZZbig, ZZbig.get_ring().parse(&s, 10).unwrap()))
         .take(2048).collect_vec()
     } else if DIM == 4 {
-        let vFp2 = br.lines().flat_map(|s|
-            s.unwrap().split_terminator(";").map(|s|
+        let aFp2 = br.lines().flat_map(|s|
+            s.unwrap().split_terminator(";").filter_map(|s|
                 s.to_string()
-                .strip_prefix("a").unwrap().to_string()
-                .trim_start_matches(char::is_numeric).to_string()
-                .strip_prefix("=").unwrap().to_string()
+                .strip_prefix("a").map(|x|
+                    x.to_string()
+                    .trim_start_matches(char::is_numeric).to_string()
+                    .strip_prefix("=").unwrap().to_string()
+                )
             ).collect_vec()).collect_vec();
-        vFp2.into_iter().map(|s| field.coerce(&ZZbig, ZZbig.get_ring().parse(&s, 10).unwrap()))
-        .collect_vec()
+        let mut aFp2 = aFp2.into_iter().map(|s| field.coerce(&ZZbig, ZZbig.get_ring().parse(&s, 10).unwrap())).collect_vec();
+
+        if PP {
+
+            let br = BufReader::new(File::open(&transfilename).unwrap());
+            let pFp2 = br.lines().flat_map(|s|
+                s.unwrap().split_terminator(";").filter_map(|s|
+                    s.to_string()
+                    .strip_prefix("p").map(|x|
+                        x.to_string()
+                        .trim_start_matches(char::is_numeric).to_string()
+                        .strip_prefix("=").unwrap().to_string()
+                    )
+                ).collect_vec()).collect_vec();
+            let pFp2 = pFp2.into_iter().map(|s| field.coerce(&ZZbig, ZZbig.get_ring().parse(&s, 10).unwrap())).collect_vec();
+            aFp2.extend(pFp2);
+
+            let br = BufReader::new(File::open(&transfilename).unwrap());
+            let nzFp2 = br.lines().last().unwrap().unwrap().split_terminator(";").filter_map(|s|
+                s.to_string().strip_prefix("nz").map(|x|
+                    x.to_string()
+                    .trim_start_matches(char::is_numeric).to_string()
+                    .strip_prefix("=").unwrap().to_string()
+                )
+            ).collect_vec();
+            let nzFp2 = nzFp2.into_iter().map(|s| field.coerce(&ZZbig, ZZbig.get_ring().parse(&s, 10).unwrap())).collect_vec();
+            aFp2.extend(nzFp2);
+
+            let br = BufReader::new(File::open(&transfilename).unwrap());
+            let sFp2 = br.lines().last().unwrap().unwrap().split_terminator(";").filter_map(|s|
+                s.to_string().strip_prefix("s").map(|x|
+                    x.to_string()
+                    .trim_start_matches(char::is_numeric).to_string()
+                    .strip_prefix("=").unwrap().to_string()
+                )
+            ).collect_vec();
+            let sFp2 = sFp2.into_iter().map(|s| field.coerce(&ZZbig, ZZbig.get_ring().parse(&s, 10).unwrap())).collect_vec();
+
+            // getting N
+            let Nfilename = "../dim4/tmpN.txt".to_string();
+            let br = BufReader::new(File::open(&Nfilename).unwrap());
+            let N = br.lines().take(2).map(|s|
+                s.unwrap()
+                .strip_prefix("(").unwrap().to_string()
+                .strip_suffix(")").unwrap().to_string()
+                .split_terminator(", ").map(|s| {
+                    let x = s.to_string();
+                    field.coerce(&ZZbig, ZZbig.get_ring().parse(&x, 10).unwrap())
+                }).collect_vec()).collect_vec();
+
+            let Nmod = (0..DIM*DIM).map(|i|
+                field.sub(field.mul_ref(&N[0][i], &sFp2[1]), field.mul_ref(&N[1][i], &sFp2[0]))
+            ).collect_vec();
+            aFp2.extend(Nmod);
+        }
+        aFp2
     } else {
         panic!("Invalid dimension")
     };
@@ -137,7 +194,6 @@ pub fn parseFp2<const DIM: usize>() -> (RImpl2, FieldImpl2, Vec<El<FieldImpl2>>)
     let ring = FreeAlgebraImpl::new(basering.clone(), 2, powrank);
     let field = ring.clone().as_field().ok().unwrap();
     let gf = GaloisField::create(field);
-    // let hom = field.can_hom(&ring).unwrap();
     let hom = gf.can_hom(&ring).unwrap();
 
     let br = BufReader::new(File::open(format!("../dim{}/zk_radical.txt", DIM)).unwrap());
@@ -256,18 +312,19 @@ pub fn parseFp2_cgl() -> (RImpl2, FieldImpl2, Vec<El<FieldImpl2>>) {
 }
 
 
-pub fn construct_r1cs_Fp<'a, F, const DIM: usize>(field: &'a F, v: &[El<F>])
+pub fn construct_r1cs_Fp<'a, F, const DIM: usize, const PP: bool>(field: &'a F, v: &[El<F>])
     -> (Vec<El<F>>, R1CS<'a, F>)
     where F: RingStore + Clone
 {
-    let vlen = v.len();
     let D = 1 << DIM;
+    let vlen = if PP { (v.len() - (D+1))/2 } else { v.len() };
+    // also Nmod and nz are passed through v vector but only nz is part of witness
     debug_assert!(vlen % D == 0);
+
+    let H = HadamardMatrixMul::new(&field, DIM);
 
     let mut z = Vec::with_capacity(vlen);
     let mut z2 = Vec::with_capacity(vlen);
-
-    let H = HadamardMatrixMul::new(&field, DIM);
     
     (0..(vlen/D - 1)).for_each(|i| {
         let vcur = &v[i*D..(i+1)*D];
@@ -286,7 +343,7 @@ pub fn construct_r1cs_Fp<'a, F, const DIM: usize>(field: &'a F, v: &[El<F>])
         }
     });
 
-    let vlast = &v[(vlen - D)..];
+    let vlast = &v[(vlen - D)..vlen];
     z.extend(vlast.iter().map(|el| field.clone_el(el)));
     z2.extend(vlast.iter().map(|el| field.mul_ref(el, el)));
 
@@ -317,9 +374,79 @@ pub fn construct_r1cs_Fp<'a, F, const DIM: usize>(field: &'a F, v: &[El<F>])
     Cdata.extend((0..D).map(|_| Vec::new()));
     Cdata.extend((0..(numcols-(2*vlen))).map(|_| vec![]));
 
-    let A = SparseMatrixMul::new(field, numcols, Adata, format!("iso{}D_AB", D).as_str());
-    let B = A.clone(); // TODO: make custom Spartan where A==B
-    let C = SparseMatrixMul::new(field, numcols, Cdata, format!("iso{}D_C", D).as_str());
+    let (A, B, C) = if !PP {
+        let A = SparseMatrixMul::new(field, numcols, Adata, format!("iso{}D_AB", D).as_str());
+        let B = A.clone(); // TODO: make custom Spartan where A==B
+        let C = SparseMatrixMul::new(field, numcols, Cdata, format!("iso{}D_C", D).as_str());
+        (A, B, C)
+    } else {
+
+        let numrows = Adata.len();
+        let mut Bdata = Adata.iter().map(|row| row.iter().map(|(j, el)| (*j, field.clone_el(el))).collect_vec()).collect_vec();
+        Bdata.extend(Bdata[..vlen].iter().map(|row| row.iter().map(|(j, el)|
+            (*j + numrows, field.clone_el(el))).collect()).collect_vec());
+        Bdata.extend(Bdata[vlen..numrows].iter().map(|row| row.iter().map(|(j, el)|
+            (*j, field.clone_el(el))).collect()).collect_vec());
+
+        Adata.extend(Adata.iter().map(|row| row.iter().map(|(j, el)|
+                (j+numrows, field.clone_el(el))).collect()).collect_vec());
+        Cdata.extend(Cdata.iter().map(|row| row.iter().map(|(j, el)|
+                (j+numrows, field.clone_el(el))).collect()).collect_vec());
+
+        // adding last relations
+        assert!(numcols-(2*vlen) >= 2);
+
+        Adata[numcols-1] = vec![(numcols + 2*vlen, field.one())];
+        Bdata[numcols-1] = ((numcols+vlen-D)..(numcols+vlen)).zip(v[2*vlen+1..].iter()).map(|(j, el)|
+            (j, field.clone_el(el))).collect();
+        Cdata[numcols-1] = vec![(numcols + 2*vlen + 1, field.one())];
+
+        let mut zPP = Vec::with_capacity(vlen);
+        let mut z2PP = Vec::with_capacity(vlen);
+
+        (0..(vlen/D - 1)).for_each(|i| {
+            let vcur = &v[vlen+i*D..vlen+(i+1)*D];
+            let mut vcur2 = vcur.iter().map(|el| field.mul_ref(el, el)).collect_vec();
+            let rhs = H.mul(&vcur2);
+
+            zPP.extend(vcur.into_iter().map(|el| field.clone_el(el)));
+            z2PP.append(&mut vcur2);
+
+            if cfg!(debug_assertions) {
+                let anext = &v[(i+1)*D..(i+2)*D];
+                let anexth = H.mul(&anext);
+                let pnext = &v[vlen+(i+1)*D..vlen+(i+2)*D];
+                let pnexth = H.mul(&pnext);
+                let lhs = anexth.iter().zip(pnexth.iter()).map(|(ael, pel)|
+                    field.mul_ref(ael, pel)).collect_vec();
+
+                test_rot(&field, &lhs, &rhs, 0);
+            }
+        });
+
+        let vlast = &v[(2*vlen - D)..2*vlen];
+        zPP.extend(vlast.iter().map(|el| field.clone_el(el)));
+        z2PP.extend(vlast.iter().map(|el| field.mul_ref(el, el)));
+
+        zPP.append(&mut z2PP);
+        debug_assert!(zPP.len() == 2*vlen);
+        zPP.push(field.clone_el(&v[2*vlen])); // adding nz
+        zPP.push(field.one()); // adding one
+        zPP.extend((0..(numcols-(2*vlen)-2)).map(|_| field.zero()));
+
+        z.append(&mut zPP);
+
+        let A = SparseMatrixMul::new(field, 2*numcols, Adata, format!("iso{}D_A", D).as_str());
+        let B = SparseMatrixMul::new(field, 2*numcols, Bdata, format!("iso{}D_B", D).as_str());
+        let C = SparseMatrixMul::new(field, 2*numcols, Cdata, format!("iso{}D_C", D).as_str());
+        (A, B, C)
+    };
+
+    // println!("m: {}", A.rows());
+    println!("m: {}", 2*vlen + if PP {2*vlen + 2} else {0});
+    println!("n: {}", 2*vlen + if PP {2*vlen} else {0});
+    println!("nz: {}", A.nonzero_entries() + C.nonzero_entries()
+        + if PP {B.nonzero_entries()} else {0});
 
     (z, R1CS::new(A, B, C))
 }
@@ -844,6 +971,10 @@ pub fn construct_r1cs_Fp2_dim2<'a, F>(field: &'a F, v: &[El<F>]) -> (Vec<El<F>>,
     let A = SparseMatrixMul::new(field, numcols, Adata, format!("iso{}D_A", D).as_str());
     let B = SparseMatrixMul::new(field, numcols, Bdata, format!("iso{}D_B", D).as_str());
     let C = SparseMatrixMul::new(field, numcols, Cdata, format!("iso{}D_C", D).as_str());
+
+    println!("m: {actrows}");
+    println!("n: {actcols}");
+    println!("nz: {}", A.nonzero_entries() + B.nonzero_entries() + C.nonzero_entries());
 
     (z, R1CS::new(A, B, C))
 }

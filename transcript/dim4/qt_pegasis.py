@@ -126,7 +126,7 @@ class qtPegasis:
 
         return EllipticCurve(self.Fp, [0, out, 0, 1, 0])
 
-    def qt_action(self, frak_a, E=None, timings=False, ret_twist=False):
+    def qt_action(self, frak_a, E=None, timings=False, ret_twist=False, aux_point=None):
         """
         Compute the action of frak_a from E using qt-Pegasis.
 
@@ -270,6 +270,17 @@ class qtPegasis:
         Phi = ChainHelper(e_sol,
                 (T1, T2, T3, T4), (T1_16, T2_16, T3_16, T4_16), (R, S),
                 M0 * M, (P, Q), ePQ4, M2)
+        
+        if aux_point is not None:
+            domain_curve = P.curve()
+            aux_point = domain_curve(aux_point)
+            O = domain_curve(0)
+
+            P4 = TuplePoint(aux_point, O, O, O)
+            aux_points = Phi.evaluate_auxiliary(P4)
+            # The even-norm branch returns A1 rather than A2.
+            factor = 1 if frak_a[0] % 2 == 0 else 0
+            Phi.write_auxiliary_transcript(aux_points, factor=factor)
 
         _t4 = time()
         logger.info(f'Step 3: {_t4-_t3:.3f}s')
@@ -498,5 +509,3 @@ class qtPegasis:
             #print("p1")
             K = T1
         return E.isogeny(K).codomain().montgomery_model()
-
-

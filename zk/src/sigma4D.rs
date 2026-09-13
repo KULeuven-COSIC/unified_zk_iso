@@ -175,7 +175,7 @@ impl<'a, PCS> Sumcheck<2, 2> for ZKisoLincheck<'a, PCS>
 }
 
 
-pub struct IsoProverSigmaDIM4<'a, R, const N: usize, RNTT = ABDLOPRing<R, N>>
+pub struct IsoProverSigmaDIM4<'a, R, const N: usize, const PP: bool, RNTT = ABDLOPRing<R, N>>
     where R: RingStore + Clone, R::Type: CanHomFrom<BigIntRingBase> + ZnRing,
           RNTT: ABDLOPRingTrait<N, BaseRing = R>
 {
@@ -185,7 +185,7 @@ pub struct IsoProverSigmaDIM4<'a, R, const N: usize, RNTT = ABDLOPRing<R, N>>
     smallC: DenseMatrixMul<'a, Zn<2>>
 }
 
-impl<'a, R, RNTT, const N: usize> IsoProverSigmaDIM4<'a, R, N, RNTT>
+impl<'a, R, RNTT, const N: usize, const PP: bool> IsoProverSigmaDIM4<'a, R, N, PP, RNTT>
     where R: RingStore + Clone, R::Type: CanHomFrom<BigIntRingBase> + ZnRing,
           RNTT: ABDLOPRingTrait<N, BaseRing = R>
 {
@@ -194,7 +194,7 @@ impl<'a, R, RNTT, const N: usize> IsoProverSigmaDIM4<'a, R, N, RNTT>
     {
         println!("");
         println!("IsoProverSigma: Generating public parameters...");
-        let (z, r1cs) = construct_r1cs_Fp::<AsField<R>, 4>(field, v);
+        let (z, r1cs) = construct_r1cs_Fp::<AsField<R>, 4, PP>(field, v);
 
         // this counts as precomp imo
         let zA = r1cs.A.mul(&z);
@@ -206,19 +206,22 @@ impl<'a, R, RNTT, const N: usize> IsoProverSigmaDIM4<'a, R, N, RNTT>
 
         let piop = SpartanPIOP::new_extra(field, z, r1cs, zA, zB, zC, None);
 
-        let n = 1 << 6;
+        // let n = 1 << 6;
+        let n = 1 << 13;
         let l = (1 << piop.varcount_cols())
             + 4*(piop.varcount_rows()) + 3*(piop.varcount_cols()) + 14;
 
-        let m2 = (1 << 14) + n + l;
-        let bnd2 = ZZbig.power_of_two(40);
+        // println!("logrows: {}", piop.varcount_rows());
+        // println!("logcols: {}", piop.varcount_cols());
+        println!("l: {l}");
+
+        let m2 = (1 << 14) + (1 << 12) + n + l;
+        let bnd2 = ZZbig.power_of_two(28);
 
         // TODO: this is slow but its precomp
         println!("IsoProverSigma:   Generating ABDLOP public parameters...");
         let abdlop = ABDLOP::random(ring_ntt, rng,
             n.div_ceil(N), Some(l.div_ceil(N) + 1), None, m2.div_ceil(N), None, bnd2);
-
-        abdlop.precomp();
 
         let gamma = (None, 13f64);
         let challbnd = ZZbig.power_of_two(128);
@@ -226,7 +229,6 @@ impl<'a, R, RNTT, const N: usize> IsoProverSigmaDIM4<'a, R, N, RNTT>
 
         println!("IsoProverSigma:   Setting up LatSigma protocol...");
         let sigma: LatSigmaDefault<'a, RNTT, N> = LatSigma::new(abdlop, gamma, challbnd, rsmode);
-        sigma.precomp();
 
         println!("IsoProverSigma: Finished generating public parameters.");
         Self { piop, sigma, smallA, smallC }
@@ -240,6 +242,15 @@ impl<'a, R, RNTT, const N: usize> IsoProverSigmaDIM4<'a, R, N, RNTT>
         self.sigma.proofsize() + self.sigma.comsize()
     }
 
+    pub fn prover_precomp(&self) {
+        println!("IsoProverSigma: Started precomputation...");
+        println!("IsoProverSigma:   Started ABDLOP precomputation...");
+        self.sigma.abdlop().precomp();
+        println!("IsoProverSigma:   Started LatSigma precomputation...");
+        self.sigma.precomp();
+        println!("IsoProverSigma: Finished precomputation.");
+    }
+
     pub fn prove(&'a self) -> (ABDLOPcommitment<RNTT,N>, LatSigmaProof<RNTT,N>) {
         println!("");
         println!("IsoProverSigma: Generating proof...");
@@ -250,7 +261,6 @@ impl<'a, R, RNTT, const N: usize> IsoProverSigmaDIM4<'a, R, N, RNTT>
         let ring = sigma.ring();
         let basering = sigma.ring().base_ring();
 
-        // TODO: check this
         let numlinrel = 30;
         let mut u = Vec::<El<R>>::with_capacity(numlinrel);
         let mut Rmdata = Vec::<Vec<(usize, El<R>)>>::with_capacity(numlinrel);
@@ -420,6 +430,7 @@ impl<'a, R, RNTT, const N: usize> IsoProverSigmaDIM4<'a, R, N, RNTT>
             &ABDLOPmessage::new(ring, None, Some(sigma.abdlop().gen_m(m))));
 
         println!("IsoProverSigma: Finished generating proof.");
+        sigma.abdlop().wipe_precomp();
         (com, proof)
     }
 
@@ -485,23 +496,34 @@ mod tests {
     #[test]
     fn test_iso4D_sigma() {
 
+        const PP: bool = true;
+
         // let rng = rand::rng();
         let rng = <rand::rngs::StdRng as rand::SeedableRng>::from_os_rng();
 
-        let (ring, field, trans) = parseFp::<4>();
-        const N: usize = 1 << 8;
+        let (ring, field, trans) = parseFp::<4, PP>();
+        const N: usize = 1 << 7;
         let abdlopring = RingValue::from(ABDLOPRingExtBase::<_, N>::new_promise_is_perfect_field(ring.clone()));
         
-        let iso4d = IsoProverSigmaDIM4::new(&abdlopring, &field, &trans, rng);
+        let iso4d = IsoProverSigmaDIM4::<_, _, PP, _>::new(&abdlopring, &field, &trans, rng);
 
         use std::time::SystemTime;
-        let now = SystemTime::now();
-        let (com, proof) = iso4d.prove();
-        println!("TEST IsoProverSigma: Prover time: {}ms", now.elapsed().unwrap().as_millis());
+        // let samples = 10;
+        let samples = 1;
+        let mut totalp = 0;
+        let mut totalv = 0;
+        for _ in 0..samples {
+            iso4d.prover_precomp();
+            let now = SystemTime::now();
+            let (com, proof) = iso4d.prove();
+            totalp += now.elapsed().unwrap().as_millis();
+            let now = SystemTime::now();
+            assert!(iso4d.verify(&com, &proof));
+            totalv += now.elapsed().unwrap().as_millis();
+        }
+        println!("TEST IsoProverSigma: Prover time: {}ms", totalp/samples);
         println!("TEST IsoProverSigma: Proof size: {}KiB", iso4d.proofsize() >> (3 + 10));
 
-        let now = SystemTime::now();
-        assert!(iso4d.verify(&com, &proof));
-        println!("TEST IsoProverSigma: Verifier time: {}ms", now.elapsed().unwrap().as_millis());
+        println!("TEST IsoProverSigma: Verifier time: {}ms", totalv/samples);
     }
 }

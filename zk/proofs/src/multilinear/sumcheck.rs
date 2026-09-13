@@ -1,5 +1,5 @@
-use itertools::Itertools;
 use std::cell::{Ref, RefCell};
+use itertools::Itertools;
 use tracing::instrument;
 
 use feanor_math::ring::{El, RingBase, RingStore, RingExtension};
@@ -316,11 +316,10 @@ mod tests {
     use feanor_math::seq::VectorFn;
     use feanor_math::rings::zn::ZnRingStore;
     use feanor_math::rings::zn::zn_64::Zn;
-    use feanor_math::rings::field::AsField;
     use feanor_math::assert_el_eq;
     use feanor_math::rings::finite::FiniteRingStore;
 
-    use crate::util::gen_vector;
+    use crate::util::gen_random;
     use crate::multilinear::{
         MultilinearBasis,
         sum_over_hypercube,
@@ -334,17 +333,16 @@ mod tests {
     fn test_sumoverhypercube() {
 
         let field = Zn::new(65537).as_field().ok().unwrap();
-        pub type Field = AsField<Zn>;
+        let mut rng = rand::rng();
 
         let N = 5;
         let polyring = MultivariatePolyRingImpl::new(field.clone(), N);
 
-        let zinner = gen_vector::<El<Field>>(|| field.random_element(rand::random::<u64>), N);
+        let zinner = gen_random(&field, &mut rng, N);
         let z = (0..N).map_fn(|i| field.clone_el(&zinner[i]));
         let zvec: Vec<_> = z.clone().into_iter().collect();
 
-        let randomcoeffs = gen_vector::<El<Field>>(||
-            field.random_element(rand::random::<u64>), 1 << N);
+        let randomcoeffs = gen_random(&field, &mut rng, 1 << N);
         let poly = from_hypercube_coeffs(&polyring, &randomcoeffs);
 
         let poly0 = polyring.specialize(&poly, N - 1, &polyring.create_term(field.zero(), polyring.create_monomial((0..N).map(|_| 0))));
@@ -384,17 +382,16 @@ mod tests {
     fn test_sumchecksum() {
 
         let field = Zn::new(65537).as_field().ok().unwrap();
-        pub type Field = AsField<Zn>;
+        let mut rng = rand::rng();
 
         let N = 5;
         let polyring = MultivariatePolyRingImpl::new(field.clone(), N);
 
-        let randomcoeffs = gen_vector::<El<Field>>(||
-            field.random_element(rand::random::<u64>), 1 << N);
+        let randomcoeffs = gen_random(&field, &mut rng, 1 << N);
         let mut poly = from_hypercube_coeffs(&polyring, &randomcoeffs);
         
         // to make poly have variables of deg 2
-        let zinner = gen_vector::<El<Field>>(|| field.random_element(rand::random::<u64>), N);
+        let zinner = gen_random(&field, &mut rng, N);
         let z = (0..N).map_fn(|i| field.clone_el(&zinner[i]));
         let zvec: Vec<_> = z.clone().into_iter().collect();
         let eq = MultilinearBasis::new(&field, &zvec).polynomial(&polyring);

@@ -49,6 +49,8 @@ for I in ids:
 assert a
 
 ell, alpha = a.gens_two()
-Ea, Eabar = EGA.qt_action((ZZ(ell), alpha), ret_twist=True)
+
+aux_P = EGA.E_start.random_point()
+Ea, Eabar = EGA.qt_action((ZZ(ell), alpha), ret_twist=True, aux_point = aux_P)
 
 
